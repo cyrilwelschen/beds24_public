@@ -528,6 +528,173 @@ def create_pdf_report(reservations: List[Reservation], target_date: datetime.dat
         st.error(f"Error creating PDF: {e}")
         return None
 
+def create_cleaning_report(reservations: List[Reservation], target_date: datetime.date) -> BytesIO:
+    """Create a PDF cleaning report from reservation data"""
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, 
+                              topMargin=0.2*inch,
+                              bottomMargin=0.2*inch,
+                              leftMargin=0.2*inch,
+                              rightMargin=0.2*inch)
+        
+        # Get styles
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=20,
+            spaceAfter=20,
+            textColor=colors.black,
+            alignment=1  # Center alignment
+        )
+        
+        section_style = ParagraphStyle(
+            'SectionHeader',
+            parent=styles['Heading2'],
+            fontSize=14,
+            spaceAfter=12,
+            textColor=colors.black,
+            borderWidth=0,
+            borderPadding=5,
+            spaceBefore=30,
+            alignment=0  # Left align
+        )
+        
+        # Story elements
+        story = []
+        
+        # Title
+        title = f"Welschen Cleaning Report - {target_date.strftime('%B %d, %Y')}"
+        story.append(Paragraph(title, title_style))
+        
+        # Categorize reservations
+        arrivals, departures, stay_through = categorize_reservations(reservations, target_date)
+        
+        # Calculate guest numbers for each section
+        def guest_str(reslist):
+            total_a = sum(r.adults for r in reslist)
+            total_c = sum(r.children for r in reslist)
+            if total_c:
+                return f"{total_a}A +{total_c}C"
+            else:
+                return f"{total_a}A"
+        
+        # Arrivals section
+        story.append(Paragraph(f"ARRIVALS - {guest_str(arrivals)}", section_style))
+        story.append(Spacer(1, 5))
+        story.append(create_cleaning_table(arrivals))
+        story.append(Spacer(1, 10))
+        
+        # Departures section
+        story.append(Paragraph(f"DEPARTURES - {guest_str(departures)}", section_style))
+        story.append(Spacer(1, 5))
+        story.append(create_cleaning_table(departures))
+        story.append(Spacer(1, 10))
+        
+        # Stay Through section
+        story.append(Paragraph(f"STAYING THROUGH - {guest_str(stay_through)}", section_style))
+        story.append(Spacer(1, 5))
+        story.append(create_cleaning_table(stay_through))
+        story.append(Spacer(1, 15))
+        
+        # Footer
+        footer_text = f"Report generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} via Beds24 API v2"
+        story.append(Paragraph(footer_text, styles['Normal']))
+        
+        # Build PDF
+        doc.build(story)
+        buffer.seek(0)
+        return buffer
+        
+    except ImportError as e:
+        st.error(f"PDF generation requires reportlab package. Error: {e}")
+        return None
+    except Exception as e:
+        st.error(f"Error creating PDF: {e}")
+        return None
+
+def create_cleaning_table(reservations: List[Reservation]) -> Table:
+    """Create a table for a list of reservations without guest and notes columns"""
+    if not reservations:
+        return Table([['No reservations for this category']], 
+                    colWidths=[8.5*inch])
+    
+    # Table headers
+    headers = ['Room', 'Guests', 'Nights', 'Check-In', 'Check-Out']
+    data = [headers]
+    
+    # Add reservation data
+    for reservation in reservations:
+        guests_str = f"{reservation.adults}A"
+        if reservation.children > 0:
+            guests_str += f"+{reservation.children}C"
+            
+        # Format check-in/out dates as 'Tue 17.05'
+        checkin_fmt = ''
+        checkout_fmt = ''
+        try:
+            checkin_dt = datetime.strptime(reservation.checkin, '%Y-%m-%d')
+            checkin_fmt = checkin_dt.strftime('%a %d.%m')
+        except Exception:
+            checkin_fmt = reservation.checkin
+        try:
+            checkout_dt = datetime.strptime(reservation.checkout, '%Y-%m-%d')
+            checkout_fmt = checkout_dt.strftime('%a %d.%m')
+        except Exception:
+            checkout_fmt = reservation.checkout
+            
+        row = [
+            reservation.room_name,
+            guests_str,
+            str(reservation.nights),
+            checkin_fmt,
+            checkout_fmt
+        ]
+        data.append(row)
+    
+    # Create table with wider and more balanced column widths
+    table = Table(data, colWidths=[
+        1.5*inch,  # Room
+        1.0*inch,  # Guests
+        0.8*inch,  # Nights
+        1.2*inch,  # Check-In
+        1.2*inch   # Check-Out
+    ])
+    
+    # Apply table style
+    table.setStyle(TableStyle([
+        # Header style
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('LINEBELOW', (0, 0), (-1, 0), 1, colors.black),
+        
+        # Data style
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        
+        # Grid
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        
+        # Reduce padding
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+    
+    return table
+
 def fetch_all_relevant_bookings(client, target_date: datetime.date) -> list:
     """
     Fetch arrivals, departures, and stay-through bookings for the target date, and deduplicate them.
@@ -643,11 +810,21 @@ def main():
             
             if pdf_buffer:
                 st.download_button(
-                    label="📋 Download PDF Report",
+                    label="Download Reception Report",
                     data=pdf_buffer,
                     file_name=f"beds24_reservations_{target_date}.pdf",
                     mime="application/pdf"
                 )
+                
+                # Generate and add cleaning report download button
+                cleaning_pdf_buffer = create_cleaning_report(reservations, target_date)
+                if cleaning_pdf_buffer:
+                    st.download_button(
+                        label="Download Housekeeping Report",
+                        data=cleaning_pdf_buffer,
+                        file_name=f"welschen_cleaning_{target_date}.pdf",
+                        mime="application/pdf"
+                    )
             
             # Display summary
             arrivals, departures, stay_through = categorize_reservations(reservations, target_date)
