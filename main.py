@@ -18,6 +18,14 @@ from reportlab.platypus import Table, TableStyle, Paragraph
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import inch
+import hashlib
+
+HASHED_PASSWORD = "5fb7707068606a228442f989a5c051614ac62c539c26d81e335e91c0a11a94eb"
+
+def verify_password(password: str) -> bool:
+    """Verify if the provided password matches the stored hash"""
+    hashed_input = hashlib.sha256(password.encode()).hexdigest()
+    return hashed_input == HASHED_PASSWORD
 
 @dataclass
 class Reservation:
@@ -771,7 +779,14 @@ def main():
     # Date selection
     target_date = st.date_input("Select arrival date:", datetime.now())
     
-    if st.button("Generate Booking Report", type="primary"):
+    # Password protection
+    password = st.text_input("Enter password to generate reports:", type="password")
+    
+    if st.button("Generate Booking Report", type="primary", disabled=not verify_password(password)):
+        if not verify_password(password):
+            st.error("❌ Incorrect password. Please try again.")
+            return
+            
         # Initialize client
         client = Beds24APIClient()
         
