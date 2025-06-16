@@ -477,9 +477,6 @@ def create_pdf_report(reservations: List[Reservation], target_date: datetime.dat
             fontSize=14,
             spaceAfter=12,
             textColor=colors.black,
-            borderWidth=0,
-            borderPadding=5,
-            spaceBefore=30,
             alignment=0  # Left align
         )
         
@@ -574,7 +571,7 @@ def create_cleaning_report(reservations: List[Reservation], target_date: datetim
             borderWidth=0,
             borderPadding=5,
             spaceBefore=30,
-            alignment=0  # Left align
+            alignment=1  # Center alignment
         )
         
         # Story elements
@@ -595,6 +592,9 @@ def create_cleaning_report(reservations: List[Reservation], target_date: datetim
                 return f"{total_a}A +{total_c}C"
             else:
                 return f"{total_a}A"
+        
+        # Add spacer for better spacing after title
+        story.append(Spacer(1, 20))
         
         # Arrivals section
         story.append(Paragraph(f"ARRIVALS - {guest_str(arrivals)}", section_style))
@@ -701,7 +701,13 @@ def create_cleaning_table(reservations: List[Reservation]) -> Table:
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
     ]))
     
-    return table
+    # Wrap the table in a container to center it
+    container = Table([[table]], colWidths=[5.7*inch])
+    container.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+    ]))
+    
+    return container
 
 def fetch_all_relevant_bookings(client, target_date: datetime.date) -> list:
     """
